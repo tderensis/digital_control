@@ -64,7 +64,7 @@ def design_regsf(sys_c_ol, sampling_interval, desired_settling_time, spoles=None
     
     # Choose poles if none were given
     
-    if spoles == None:
+    if spoles is None:
         spoles = []
         
         (sys_spoles, vectors) = LA.eig(A)
