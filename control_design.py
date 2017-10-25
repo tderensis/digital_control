@@ -94,7 +94,7 @@ def design_regsf(sys_c_ol, sampling_interval, desired_settling_time, spoles=None
     
     # Check the poles for stability
     for zpole in full_state_feedback.computed_poles:
-        if abs(zpole) >= 1:
+        if abs(zpole) > 1:
             print("Computed pole is not stable")
             return None
     
@@ -160,7 +160,7 @@ def design_regob(sys_c_ol, sampling_interval, desired_settling_time,
     
     # Choose poles if none were given
     
-    if spoles == None:
+    if spoles is None:
         spoles = []
         
         (sys_spoles, vectors) = LA.eig(A)
@@ -219,7 +219,7 @@ def design_regob(sys_c_ol, sampling_interval, desired_settling_time,
     
     # Check the poles for stability just in case
     for zopole in full_state_feedback.computed_poles:
-        if abs(zopole) >= 1:
+        if abs(zopole) > 1:
             print("Computed observer pole is not stable")
             return None
     
@@ -229,7 +229,8 @@ def design_regob(sys_c_ol, sampling_interval, desired_settling_time,
 
 
 def design_tsob(sys_c_ol, sampling_interval, desired_settling_time,
-                desired_observer_settling_time=None, spoles=None, sopoles=None):
+                desired_observer_settling_time=None, spoles=None, sopoles=None, sapoles=None,
+                disp=True):
     """ Design a digital full order observer tracking system with the desired settling time.
     
     Args:
@@ -243,13 +244,19 @@ def design_tsob(sys_c_ol, sampling_interval, desired_settling_time,
             poles will try to be used. Default is None.
         sopoles (optional): The desired observer poles. If not supplied, then optimal
             poles will try to be used. Default is None.
-            
+        sapoles (optional): The poles of the reference input and disturbance vectors.
+            If not supplied the reference input is assumed to be a step. Default is None.
+        disp: Print debugging output. Default is True.
+
     Returns:
         tuple: (sys_d_ol, phia, gammaa, L1, L2, K) Where sys_d_ol is the discrete plant,
             phia is the discrete additional dynamics A matrix, gammaa is the discrete
             additional dynamics B matrix, L1 is the plant gain matrix, L2 is the
             additional gain matrix, and K is the observer gain matrix.
     """
+
+    if disp:
+        print("Designing a tracking system with full order observer.")
 
     # Make sure the system is in fact continuous and not discrete
     if sys_c_ol.dt != None:
@@ -286,17 +293,31 @@ def design_tsob(sys_c_ol, sampling_interval, desired_settling_time,
         return None
     
     # Create the design model with additional dynamics
-    phia = np.eye(num_inputs)
-    gammaa = np.zeros((num_inputs, 1))
-    gammaa[0,0] = 1
-    phid_top_row = np.concatenate((phi, np.zeros((num_states, num_inputs))), axis=1)
+    if sapoles is None:
+        # assume tracking a step input (s=0, z=1)
+        sapoles = np.zeros((1, num_inputs))
+
+    zapoles = [ -p for p in np.poly(control_poles.spoles_to_zpoles(sapoles, sampling_interval)) ]
+    
+    gammaa = np.transpose(np.matrix(zapoles))
+    gammaa = np.delete(gammaa, 0) # the first coefficient isn't important
+
+    phia_left = np.matrix(gammaa)
+    phia_right = np.concatenate((np.eye(num_inputs-1), np.zeros((1, num_inputs-1))), axis=0)
+    phia = np.concatenate((phia_left, phia_right), axis=1)
+    if num_outputs > 1:
+        # replicate the additional dynamics
+        phia = np.kron(np.eye(num_outputs), phia)
+        gammaa = np.kron(np.eye(num_outputs), gammaa)
+
+    phid_top_row = np.concatenate((phi, np.zeros((num_states, num_inputs*num_outputs))), axis=1)
     phid_bot_row = np.concatenate((gammaa*C, phia), axis=1)
     phid = np.concatenate((phid_top_row, phid_bot_row), axis=0)
-    gammad = np.concatenate((gamma, np.zeros((num_inputs, num_inputs))), axis=0)
+    gammad = np.concatenate((gamma, np.zeros((num_inputs*num_outputs, num_inputs))), axis=0)
 
     # Choose poles if none were given
     
-    if spoles == None:
+    if spoles is None:
         spoles = []
         
         (sys_spoles, vectors) = LA.eig(A)
@@ -308,21 +329,29 @@ def design_tsob(sys_c_ol, sampling_interval, desired_settling_time,
             if pole.real < s1_normalized:
                 # Use sufficiently damped plant poles: plant poles whose real parts lie to the left of s1/Ts.
                 spoles.extend([pole])
+                if disp:
+                    print("Using sufficiently damped plant pole", pole)
             elif pole.imag != 0 and pole.real > s1_normalized and pole.real < 0:
                 # Replace real part of a complex pole that is not sufficiently damped with s1/Ts
                 pole = [complex(s1_normalized, pole.imag)]
                 spoles.extend(pole)
+                if disp:
+                    print("Using added damping pole", pole)
             elif pole.real > 0 and pole.real > s1_normalized:
                 # Reflect the pole about the imaginary axis and use that
                 pole = [complex(-pole.real, pole.imag)]
                 spoles.extend(pole)
+                if disp:
+                    print("Using pole reflection", pole)
         
         num_spoles_left = phid.shape[0] - len(spoles)
 
         if num_spoles_left > 0:
             # Use normalized bessel poles for the rest
             spoles.extend(control_poles.bessel_spoles(num_spoles_left, desired_settling_time))
-
+            if disp:
+                print("Using normalized bessel for the remaining", num_spoles_left, "poles")
+    
     zpoles = control_poles.spoles_to_zpoles(spoles, sampling_interval)
 
     # place the poles such that eig(phi - gamma*L) are inside the unit circle
@@ -331,7 +360,7 @@ def design_tsob(sys_c_ol, sampling_interval, desired_settling_time,
     # Check the poles for stability just in case
     for zpole in full_state_feedback.computed_poles:
         if abs(zpole) >= 1:
-            print("Computed pole is not stable")
+            print("Computed pole is not stable", zpole)
             return None
     
     L = full_state_feedback.gain_matrix
@@ -339,7 +368,7 @@ def design_tsob(sys_c_ol, sampling_interval, desired_settling_time,
     L2 = L[:,num_states:]
 
     # Choose poles if none were given
-    if sopoles == None:
+    if sopoles is None:
         sopoles = []
         if desired_observer_settling_time == None:
             desired_observer_settling_time = desired_settling_time/4
@@ -359,8 +388,8 @@ def design_tsob(sys_c_ol, sampling_interval, desired_settling_time,
     
     # Check the poles for stability just in case
     for zopole in full_state_feedback.computed_poles:
-        if abs(zopole) >= 1:
-            print("Computed observer pole is not stable")
+        if abs(zopole) > 1:
+            print("Computed observer pole is not stable", zopole)
             return None
     
     K = np.transpose(full_state_feedback.gain_matrix)
