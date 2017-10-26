@@ -49,7 +49,7 @@ def upper_gain_margin(A, B, C, discrete=True, tol=1e-3, max_gain_dB=60, output_d
         # Use the bisect method for calculating the gain margin
         t1 = 1
         t2 = max_gain
-        gain_mat = np.eye(p)
+        gain_mat = np.matrix(np.eye(p))
         gain = t1
 
         while 20 * math.log(t2/t1, 10) > tol:
@@ -112,7 +112,7 @@ def lower_gain_margin(A, B, C, discrete=True, tol=1e-3, min_gain_dB=-60, output_
         # Use the bisect method for calculating the gain margin
         t1 = min_gain
         t2 = 1
-        gain_mat = np.eye(p)
+        gain_mat = np.matrix(np.eye(p))
         gain = t1
 
         while 20 * math.log(t2/t1, 10) > tol:
@@ -172,7 +172,7 @@ def phase_margin(A, B, C, discrete=True, tol=1e-3, max_angle_deg=120):
         # Use the bisect method for calculating the phase margin
         t1 = 1
         t2 = max_angle
-        gain_mat = np.eye(p, dtype=complex)
+        gain_mat = np.matrix(np.eye(p, dtype=complex))
         angle = t1
 
         while t2 - t1 > tol:
