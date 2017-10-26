@@ -17,16 +17,16 @@ import control_plot, control_sim, control_design, control_optimize, control_eval
 # (x)       cart position coordinate                 (m)
 # (theta)   pendulum angle from vertical (down)      (rad)
 
-M = 0.5;
-m = 0.2;
-b = 0.1;
-I = 0.006;
-g = 9.8;
-l = 0.3;
+M = 0.5
+m = 0.2
+b = 0.2
+g = 9.8
+l = 0.3
+I = 1/3 * l**2 * m # assumes a rod
 
-T = 0.01 # sampling time
+T = 0.02 # sampling time
 Ts = 1 # settling time
-
+Tso = Ts/6
 p = I * (M + m) + M * m * l * l # denominator for the A and B matrices
 
 #"""
@@ -58,15 +58,22 @@ D = np.matrix(D)
 
 sys_c_ol = signal.StateSpace(A, B, C, D)
 print(sys_c_ol)
-(sys_d_ol, phia, gammaa, L1, L2, K) = control_design.design_tsob(sys_c_ol, T, Ts)
+spoles=None
+(sys_d_ol, L, K) = control_design.design_regob(sys_c_ol, T, Ts, Tso, spoles=spoles)
 phi = sys_d_ol.A
 gamma = sys_d_ol.B
-print("L1 = ", L1)
-print("L2 = ", L2)
+print("L = ", L)
 print("K = ", K)
-(phi_ltf, gamma_ltf, c_ltf) = control_eval.ltf_tsob(sys_d_ol, phia, gammaa, L1, L2, K)
+
+print("Stability assuming all states are measured")
+(phi_ltf, gamma_ltf, c_ltf) = control_eval.ltf_regsf(sys_d_ol, L)
 control_eval.print_stability_margins(phi_ltf, gamma_ltf, c_ltf)
 
-x0 = [0, 0, 0.1, 0]
+print("Stability using a full order observer")
+(phi_ltf, gamma_ltf, c_ltf) = control_eval.ltf_regob(sys_d_ol, L, K)
+control_eval.print_stability_margins(phi_ltf, gamma_ltf, c_ltf)
+
+x0 = [0.1, 0, 0.1, 0]
 (t, u, x, xhat, y) = control_sim.sim_regob(phi, gamma, C, L, K, T, x0, Ts*2)
+print("settling time = ", control_eval.settling_time(t, y))
 control_plot.plot_regob(t, u, x, xhat, y)
