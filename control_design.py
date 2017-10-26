@@ -13,7 +13,7 @@ from numpy import linalg as LA
 from scipy import signal
 import cmath
 
-
+            
 def design_regsf(sys_c_ol, sampling_interval, desired_settling_time, spoles=None):
     """ Design a digital full state feedback regulator with the desired settling time.
     
@@ -104,7 +104,8 @@ def design_regsf(sys_c_ol, sampling_interval, desired_settling_time, spoles=None
 
 
 def design_regob(sys_c_ol, sampling_interval, desired_settling_time,
-                 desired_observer_settling_time=None, spoles=None, sopoles=None):
+                 desired_observer_settling_time=None, spoles=None, sopoles=None,
+                 disp=True):
     """ Design a digital full order observer regulator with the desired settling time.
     
     Args:
@@ -118,7 +119,8 @@ def design_regob(sys_c_ol, sampling_interval, desired_settling_time,
             poles will try to be used. Default is None.
         sopoles (optional): The desired observer poles. If not supplied, then optimal
             poles will try to be used. Default is None.
-    
+        disp: Print debugging output. Default is True.
+
     Returns:
         tuple: (sys_d_ol, L, K) Where sys_d_ol is the discrete plant, L is the stablizing
             gain matrix, and K is the observer gain matrix.
@@ -167,23 +169,33 @@ def design_regob(sys_c_ol, sampling_interval, desired_settling_time,
         
         # first go through the system poles and see if they are suitable.
         s1_normalized = control_poles.bessel_spoles(1, desired_settling_time)[0]
+
         for pole in sys_spoles:
             if pole.real < s1_normalized:
                 # Use sufficiently damped plant poles: plant poles whose real parts lie to the left of s1/Ts.
                 spoles.extend([pole])
+                if disp:
+                    print("Using sufficiently damped plant pole", pole)
             elif pole.imag != 0 and pole.real > s1_normalized and pole.real < 0:
                 # Replace real part of a complex pole that is not sufficiently damped with s1/Ts
                 pole = [complex(s1_normalized, pole.imag)]
                 spoles.extend(pole)
+                if disp:
+                    print("Using added damping pole", pole)
             elif pole.real > 0 and pole.real > s1_normalized:
                 # Reflect the pole about the imaginary axis and use that
                 pole = [complex(-pole.real, pole.imag)]
                 spoles.extend(pole)
+                if disp:
+                    print("Using pole reflection", pole)
         
-        num_spoles_left = num_states - len(spoles)
+        num_spoles_left = phi.shape[0] - len(spoles)
+
         if num_spoles_left > 0:
             # Use normalized bessel poles for the rest
             spoles.extend(control_poles.bessel_spoles(num_spoles_left, desired_settling_time))
+            if disp:
+                print("Using normalized bessel for the remaining", num_spoles_left, "spoles")
     
     zpoles = control_poles.spoles_to_zpoles(spoles, sampling_interval)
 
@@ -199,7 +211,7 @@ def design_regob(sys_c_ol, sampling_interval, desired_settling_time,
     L = full_state_feedback.gain_matrix
 
     # Choose poles if none were given
-    if sopoles == None:
+    if sopoles is None:
         sopoles = []
         if desired_observer_settling_time == None:
             desired_observer_settling_time = desired_settling_time/4
@@ -210,7 +222,9 @@ def design_regob(sys_c_ol, sampling_interval, desired_settling_time,
         
         if num_sopoles_left > 0:
             # Use normalized bessel poles for the rest
-            sopoles.extend(control_poles.bessel_spoles(num_sopoles_left, desired_settling_time))
+            sopoles.extend(control_poles.bessel_spoles(num_sopoles_left, desired_observer_settling_time))
+            if disp:
+                print("Using normalized bessel for the remaining", num_sopoles_left, "sopoles")
     
     zopoles = control_poles.spoles_to_zpoles(sopoles, sampling_interval)
         
@@ -295,25 +309,28 @@ def design_tsob(sys_c_ol, sampling_interval, desired_settling_time,
     # Create the design model with additional dynamics
     if sapoles is None:
         # assume tracking a step input (s=0, z=1)
-        sapoles = np.zeros((1, num_inputs))
+        sapoles = [0]
+
 
     zapoles = [ -p for p in np.poly(control_poles.spoles_to_zpoles(sapoles, sampling_interval)) ]
-    
+    zapoles = np.delete(zapoles, 0) # the first coefficient isn't important
+
     gammaa = np.transpose(np.matrix(zapoles))
-    gammaa = np.delete(gammaa, 0) # the first coefficient isn't important
+    q = gammaa.shape[0]
 
     phia_left = np.matrix(gammaa)
-    phia_right = np.concatenate((np.eye(num_inputs-1), np.zeros((1, num_inputs-1))), axis=0)
+    phia_right = np.concatenate((np.eye(q-1), np.zeros((1, q-1))), axis=0)
     phia = np.concatenate((phia_left, phia_right), axis=1)
     if num_outputs > 1:
         # replicate the additional dynamics
         phia = np.kron(np.eye(num_outputs), phia)
         gammaa = np.kron(np.eye(num_outputs), gammaa)
 
-    phid_top_row = np.concatenate((phi, np.zeros((num_states, num_inputs*num_outputs))), axis=1)
+    # Form the design matrix
+    phid_top_row = np.concatenate((phi, np.zeros((num_states, q*num_outputs))), axis=1)
     phid_bot_row = np.concatenate((gammaa*C, phia), axis=1)
     phid = np.concatenate((phid_top_row, phid_bot_row), axis=0)
-    gammad = np.concatenate((gamma, np.zeros((num_inputs*num_outputs, num_inputs))), axis=0)
+    gammad = np.concatenate((gamma, np.zeros((gammaa.shape[0], num_inputs))), axis=0)
 
     # Choose poles if none were given
     
@@ -353,6 +370,9 @@ def design_tsob(sys_c_ol, sampling_interval, desired_settling_time,
                 print("Using normalized bessel for the remaining", num_spoles_left, "poles")
     
     zpoles = control_poles.spoles_to_zpoles(spoles, sampling_interval)
+    if disp:
+        print("spoles = ", spoles)
+        print("zpoles = ", zpoles)
 
     # place the poles such that eig(phi - gamma*L) are inside the unit circle
     full_state_feedback = signal.place_poles(phid, gammad, zpoles)
@@ -379,7 +399,7 @@ def design_tsob(sys_c_ol, sampling_interval, desired_settling_time,
         
         if num_sopoles_left > 0:
             # Use normalized bessel poles for the rest
-            sopoles.extend(control_poles.bessel_spoles(num_sopoles_left, desired_settling_time))
+            sopoles.extend(control_poles.bessel_spoles(num_sopoles_left, desired_observer_settling_time))
     
     zopoles = control_poles.spoles_to_zpoles(sopoles, sampling_interval)
         
