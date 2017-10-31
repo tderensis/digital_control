@@ -19,13 +19,13 @@ import control_plot, control_sim, control_design, control_optimize, control_eval
 
 M = 0.5
 m = 0.2
-b = 0.2
+b = 1
 g = 9.8
 l = 0.3
 I = 1/3 * l**2 * m # assumes a rod
 
 T = 0.02 # sampling time
-Ts = 1 # settling time
+Ts = 2 # settling time
 Tso = Ts/6
 p = I * (M + m) + M * m * l * l # denominator for the A and B matrices
 
@@ -76,4 +76,85 @@ control_eval.print_stability_margins(phi_ltf, gamma_ltf, c_ltf)
 x0 = [0.1, 0, 0.1, 0]
 (t, u, x, xhat, y) = control_sim.sim_regob(phi, gamma, C, L, K, T, x0, Ts*2)
 print("settling time = ", control_eval.settling_time(t, y))
-control_plot.plot_regob(t, u, x, xhat, y)
+#control_plot.plot_regob(t, u, x, xhat, y)
+
+
+import serial, io, math
+from time import sleep
+
+def readline(a_serial, eol=b'\n'):
+    leneol = len(eol)
+    line = bytearray()
+    while True:
+        c = a_serial.read(1)
+        if c:
+            line += c
+            if line[-leneol:] == eol:
+                break
+        else:
+            break
+    return bytes(line)
+    
+microsteps=1.0
+input('Press Enter to start')
+# start serial
+ser = serial.Serial(port='COM4', baudrate=115200, timeout=1)
+print("opened serial port")
+#ser.write("zero\r".encode('utf-8'))
+ms_str = "ms " + str(microsteps) + "\r"
+ser.write(ms_str.encode('utf-8'))
+xhat = np.matrix(np.zeros((4, 1)))
+angle = 0
+while abs(angle-180) > 1:
+    ser.write("ga\r".encode('utf-8'))
+    ser.flush()
+    angle = float(readline(ser))
+    print(angle)
+    sleep(0.1)
+u = 0
+velocity = 0
+accel = 0
+while True:
+    # read current state
+    ser.write("gp\r".encode('utf-8'))
+    position = readline(ser)
+    
+    if position == "end":
+        print("endstop hit!")
+        break
+    # convert from steps to meters
+    position = float(position)
+    position = (position/microsteps)/200 * (math.pi*18.3e-3)
+    print("position", position)
+
+    ser.write("ga\r".encode('utf-8'))
+    angle = readline(ser)
+    if angle == "end":
+        print("endstop hit!")
+        break
+    # convert to radian offset
+    angle = float(angle)
+    if abs(angle-180) > 10:
+        print("angle out of range")
+        break
+    angle = math.pi/180 * (180-angle)
+    print("angle", angle)
+    
+    y = np.matrix([[position], [angle]]) 
+    print (y)
+    xhat = (phi - K * C) * xhat + gamma * u + K * y
+    print(xhat)
+    u = -L * xhat
+    print(u)
+    
+    last_velocity = velocity
+    velocity = (u + m*l*0 - (M+m)*accel)/b
+    accel = (velocity - last_velocity)/T
+    print("velocity:", velocity)
+    steps_per_sec = velocity * (microsteps*200)/(math.pi*18.3e-3)
+    print("steps per sec:", int(steps_per_sec))
+    ss_str = "ss " + str(int(steps_per_sec)) + "\r"
+    #sio.write(ss_str.encode('utf-8'))
+    sleep(T)
+
+ser.write("stop\r".encode('utf-8'))
