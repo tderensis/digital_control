@@ -307,6 +307,34 @@ def ltf_regob(sys_ol, L, K):
 
     return (A_ltf, B_ltf, C_ltf)
 
+def ltf_regredob(sys_ol, L, K, F, G, H):
+    """ Construct the the loop transfer function of the full order
+    observer system. Used for calculating stability.
+    
+    Args:
+        sys_ol (StateSpace): The state-space model of the plant
+        L (matrix): The gain matrix
+        K (matrix): The observer gain matrix
+        
+    Returns:
+        tuple: (A, B, C) Where A, B, and C are the matrices that describe the
+            loop transfer function
+    """
+
+    A = sys_ol.A
+    B = sys_ol.B
+    C = sys_ol.C
+    (n, p) = B.shape
+    (measured, _) = C.shape
+    L1 = L[:, :measured ]
+    L2 = L[:,  measured:]
+    A_ltf_top_row = np.concatenate((A, np.zeros((n, n-measured))), axis=1)
+    A_ltf_bot_row = np.concatenate(((G - H*(L2 * K + L1))*C, F - H * L2), axis=1)
+    A_ltf = np.concatenate((A_ltf_top_row, A_ltf_bot_row), axis=0)
+    B_ltf = np.concatenate((B, np.zeros((n-measured, p))), axis=0)
+    C_ltf = np.concatenate(((L1 + L2*K)*C, L2), axis=1)
+
+    return (A_ltf, B_ltf, C_ltf)
 
 def ltf_tsob(sys_ol, Aa, Ba, L1, L2, K):
     """ Construct the the loop transfer function of the full order

@@ -73,3 +73,161 @@ def spoles_to_zpoles(spoles, T):
     """
 
     return [ cmath.exp(spole * T) for spole in spoles ]
+
+import numpy as np
+from numpy import linalg as LA
+
+def fbg(A, B, p, q=None):
+    """
+    %FBG	Feedback gain matrices.
+    %
+    % FUNCTION CALLS (2):
+    %
+    % (1) L = fbg(A,B,p);
+    %
+    % This calculates a matrix L such that the eigenvalues of A-B*L are
+    % those specified in the vector p.  Any complex eigenvalues in the 
+    % vector p must appear in consecutive complex-conjugate pairs.
+    % The numbers in the vector p must be distinct (see below for repeated roots).
+    %
+    % (2) L = fbg(A,B,p,q);
+    %
+    % This form allows the user to specify repeated eigenvalues by indicating
+    % the desired multiplicity in the vector q.  For example, to have a single
+    % eigenvalue at -2, another at -3 with multiplicity 3, and  complex conjugate 
+    % eigenvalues at -1+j, -1-j with multiplicity 2,  set p=[-2 -3 -1+j -1-j], 
+    % and q=[1 3 2 2].  The multiplicity of any eigenvalue cannot be greater
+    % than the number of columns of B.
+
+    """
+
+    if q is None:
+        q = np.ones((1, len(p)))
+    (n, m) = B.shape
+    I = np.eye(n)
+    npp = len(p)
+    cvv = [n.imag==0 for n in p ]
+    npoles = int(npp - sum([ not n for n in cvv])/2)
+
+    for i in range(0, npp):
+        if i < npoles:
+            if not cvv[i]:
+                cvv[i+1]=[]
+                p[i+1]=[]
+                q[i+1]=[]
+
+    if n <= m:
+        d1=[]
+        d2=[]
+        for i in range(0, npoles):
+            if cvv[i]:
+                d1.extend([p[i]])
+                if i < npoles:
+                    d2.extend([0])
+            else:
+                d1.extend([p[i].real, p[i].real])
+                if i < np:
+                    d2.extend([p[i].imag, 0])
+                else:
+                    d2.extend([p[i].imag])
+        if n > 1:
+            L = LA.lstsq(B, A - (np.diag(d1) + np.diag(d2, 1) - np.diag(d2, -1)))[0]
+        else:
+            L = LA.lstsq(B, A - d1)[0]
+        return L
+
+    sq = sum(q)
+    AT=[]
+    ATT=[]
+    X=[]
+    X1=[]
+    Y=[]
+    Y1=[]
+    cv=[]
+    Xb=[]
+    for i in range(0, npoles):
+        print(cvv[i])
+        cv.extend([cvv[i] * n for n in [1]*q[i]])
+    print(cv)
+    for i in range(0, npoles):
+        T = np.null(np.concatenate((p[i]*I-A, B), axis=1))
+        TT = np.orth(T[1:n,:])
+        AT = np.concatenate((AT, T), axis=1)
+        ATT = np.concatenate((ATT, TT), axis=1)
+        X[:, i] = TT[:, 1:q[i]]
+        if q[i] == 1 and i > 1:
+            cvt = cv[1:i]
+            In = find(cvt==0)
+            c = cond(np.concatenate((X, np.conj(X[:,In])), axis=1))
+            for j in range(1, m+1):
+                Y = np.concatenate((X[:,1:i-1], TT[:,j]), axis=1)
+                cc = np.cond(np.concatenate((Y, np.conj(Y[:,In])), axis=1))
+                if cc < c:
+                    c = cc
+                    X[:, i] = TT[:, j]
+
+    Xt = X
+    cd = 1.e15
+
+    if m == n:  # can calculate L to get orthogonal eigenvectors
+        Ab = np.zeros((n, n))
+        for i in range(0, npoles):
+            Ab[i, i] = p[i]
+            if not cv[i]:
+                Ab[i, i+1] = -p[i].imag
+                Ab[i+1, i] = p[i].imag
+                Ab[i+1, i+1] = p[i].real
+
+        L = LA.lstsq(B, (A-Ab))[0]
+        return L
+
+    if m > 1:
+        for k in range(5):
+            X2 = []
+            kk = 0
+            for i in range(0, npoles):
+                Pr = ATT[:,(i-1)*m+1:i*m]
+                Pr = Pr * np.transpose(Pr)
+                for j in range(0, q[i]):
+                    kk = kk + 1
+                    S = np.concatenate((Xt[:,1:kk-1], Xt[:,kk+1:sq]), axis=1)
+                    S = np.concatenate((S, np.conj(S)), axis=1)
+                    if not cv[kk]:
+                        S = np.concatenate((S, np.conj(Xt[:, kk])), axis=1)
+                    (Us, Ss, Vs) = np.svd(S)
+                    Xt[:,kk] = Pr * Us[:,n]
+                    Xt[:,kk] = Xt[:, kk] / np.norm(Xt[:, kk])
+                    if not cv(kk):
+                        X2 = np.concatenate((X2, np.conj(Xt[:,kk])), axis=1)
+
+            c = np.cond(np.concatenate((Xt, X2), axis=1));
+            if c < cd:
+                Xtf = Xt
+                cd = c
+    else:
+        Xtf = X
+
+    kkk = 0
+    X1=[]
+    X2=[]
+    for i in range(0, npoles):
+        for j in range(0, q[i]):
+            kkk = kkk + 1
+            if cv[kkk]:
+                x = Xtf[:,kkk].real
+                y = Xtf[:,kkk].imag
+                if np.norm(x) > np.norm(y):
+                    Xtf[:,kkk] = x/np.norm(x)
+                else:
+                    Xtf[:,kkk] = y/np.norm(y)
+            a = LA.lstsq(AT[1:n, i*m+1:(i+1)*m], Xtf[:,kkk])[0]
+            t = AT[n+1:n+m, i*m+1:(i+1)*m] * a
+            x = t.imag
+            Xb = np.concatenate((Xb, t.real), axis=1)
+            if not cv[kkk]:
+                X2 = np.concatenate((X2, x), axis=1)
+                X1 = np.concatenate((X1, Xtf[:,kkk].imag), axis=1)
+                Xtf[:,kkk] = Xtf[:,kkk].real
+
+    L = np.concatenate((Xb, X2), axis=1)/np.concatenate((Xtf, X1), axis=1)
+    return L
