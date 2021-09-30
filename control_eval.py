@@ -336,7 +336,7 @@ def ltf_regredob(sys_ol, L, K, F, G, H):
 
     return (A_ltf, B_ltf, C_ltf)
 
-def ltf_tsob(sys_ol, Aa, Ba, L1, L2, K):
+def ltf_tsob(sys_ol, Aa, Ba, Ca, L1, L2, K):
     """ Construct the the loop transfer function of the full order
     observer tracking system. Used for calculating stability.
     
@@ -360,7 +360,7 @@ def ltf_tsob(sys_ol, Aa, Ba, L1, L2, K):
     (na, pa) = Ba.shape
     A_ltf_top_row = np.concatenate((A, np.zeros((n, n+na))), axis=1)
     A_ltf_mid_row = np.concatenate((K * C, A - K * C - B * L1, -B * L2), axis=1)
-    A_ltf_bot_row = np.concatenate((Ba * C, np.zeros((na, n)), Aa), axis=1)
+    A_ltf_bot_row = np.concatenate((Ba * Ca, np.zeros((na, n)), Aa), axis=1)
     A_ltf = np.concatenate((A_ltf_top_row, A_ltf_mid_row, A_ltf_bot_row), axis=0)
     B_ltf = np.concatenate((B, np.zeros((n + na, pa))), axis=0)
     C_ltf = np.concatenate((np.zeros((p, n)), L1, L2), axis=1)
@@ -368,7 +368,7 @@ def ltf_tsob(sys_ol, Aa, Ba, L1, L2, K):
     return (A_ltf, B_ltf, C_ltf)
 
 
-def ltf_tssf(sys_ol, Aa, Ba, L1, L2):
+def ltf_tssf(sys_ol, Aa, Ba, Ca, L1, L2):
     """ Construct the the loop transfer function of the full state
     feedback tracking system. Used for calculating stability.
     
@@ -390,7 +390,7 @@ def ltf_tssf(sys_ol, Aa, Ba, L1, L2):
     (n, p) = B.shape
     (na, pa) = Ba.shape
     A_ltf_top_row = np.concatenate((A, np.zeros((n, na))), axis=1)
-    A_ltf_bot_row = np.concatenate((Ba * C, Aa), axis=1)
+    A_ltf_bot_row = np.concatenate((Ba * Ca, Aa), axis=1)
     A_ltf = np.concatenate((A_ltf_top_row, A_ltf_bot_row), axis=0)
     B_ltf = np.concatenate((B, np.zeros((na, pa))), axis=0)
     C_ltf = np.concatenate((L1, L2), axis=1)
