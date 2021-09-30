@@ -1,11 +1,9 @@
 """
 Design of a state space controller for an inverted pendulum driven by stepper motor.
 """
-import numpy as np
-from scipy import signal
-import matplotlib.pyplot as plt
-import scipy.linalg as LA
 import control_plot, control_sim, control_design, control_optimize, control_eval, control_poles
+from scipy import signal
+import numpy as np
 import math
 
 
@@ -62,8 +60,11 @@ Ts = 1.2 # settling time
 Tso = Ts/6
 
 print("Using T =", T, "Ts =", Ts, "Tso = ", Tso)
+spoles = [
+(-4.053+2.34j), (-4.053-2.34j), (-4.044060776465936+0j), (-3.9722607764659337+0j)
+]
 
-(sys_d_ol, L, K) = control_design.design_regob(sys_c_ol, T, Ts, Tso)
+(sys_d_ol, L, K) = control_design.design_regob(sys_c_ol, T, Ts, Tso, spoles)
 phi = sys_d_ol.A
 gamma = sys_d_ol.B
 print("phi =\n", phi)
@@ -89,15 +90,23 @@ control_plot.plot_regsf(t, u, x)
 print("fob settling time = ", control_eval.settling_time(t, y))
 control_plot.plot_regob(t, u, x, xhat, y)
 
-#spoles = [
-#(-4.053000000000002+2.3394851997822044j), (-4.053000000000002-2.3394851997822044j), (-4.044060776465936+0j)
-#]
-#spoles = spoles + control_poles.bessel_spoles(3, Ts)
-#print(spoles)
-#(sys_d_ol, phia, gammaa, L1, L2, K) = control_design.design_tsob(sys_c_ol, T, Ts, Tso, spoles)
+# Add a pole for the tracking system
+spoles = spoles + control_poles.bessel_spoles(1, Ts)
 
-#print(phia)
-#print(gammaa)
-#print(L1)
-#print(L2)
-#print(K)
+# Only position is tracked
+Ca = np.matrix([ 1, 0, 0, 0 ])
+(sys_d_ol, phia, gammaa, L1, L2, K) = control_design.design_tsob(sys_c_ol, Ca, T, Ts, Tso, spoles)
+
+print("phia = ", phia)
+print("gammaa = ", gammaa)
+print("L1 = ", L1)
+print("L2 = ", L2)
+print("K =\n", K)
+
+(phi_ltf, gamma_ltf, c_ltf) = control_eval.ltf_tssf(sys_d_ol, phia, gammaa, Ca, L1, L2)
+print("Stability using a tracking system with full state feedback.")
+control_eval.print_stability_margins(phi_ltf, gamma_ltf, c_ltf)
+
+(phi_ltf, gamma_ltf, c_ltf) = control_eval.ltf_tsob(sys_d_ol, phia, gammaa, Ca, L1, L2, K)
+print("Stability using a tracking system with full order observer")
+control_eval.print_stability_margins(phi_ltf, gamma_ltf, c_ltf)
